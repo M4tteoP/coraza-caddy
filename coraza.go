@@ -13,10 +13,10 @@ import (
 	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 	coreruleset "github.com/corazawaf/coraza-coreruleset"
-	"github.com/corazawaf/coraza-coreruleset/io"
 	"github.com/corazawaf/coraza/v3"
 	"github.com/corazawaf/coraza/v3/types"
-	"github.com/yalue/merged_fs"
+	"github.com/jcchavezs/mergefs"
+	"github.com/jcchavezs/mergefs/io"
 	"go.uber.org/zap"
 )
 
@@ -28,8 +28,9 @@ func init() {
 // corazaModule is a Web Application Firewall implementation for Caddy.
 type corazaModule struct {
 	// deprecated
-	Include    []string `json:"include"`
-	Directives string   `json:"directives"`
+	Include      []string `json:"include"`
+	Directives   string   `json:"directives"`
+	LoadOWASPCRS bool     `json:"load_owasp_crs"`
 
 	logger *zap.Logger
 	waf    coraza.WAF
@@ -47,9 +48,11 @@ func (corazaModule) CaddyModule() caddy.ModuleInfo {
 func (m *corazaModule) Provision(ctx caddy.Context) error {
 	m.logger = ctx.Logger(m)
 
-	config := coraza.NewWAFConfig().
-		WithErrorCallback(logger(m.logger)).
-		WithRootFS(merged_fs.NewMergedFS(coreruleset.FS, io.OSFS))
+	config := coraza.NewWAFConfig().WithErrorCallback(logger(m.logger))
+
+	if m.LoadOWASPCRS {
+		config = config.WithRootFS(mergefs.Merge(coreruleset.FS, io.OSFS))
+	}
 
 	if m.Directives != "" {
 		config = config.WithDirectives(m.Directives)
@@ -155,6 +158,8 @@ func (m *corazaModule) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 			return d.ArgErr()
 		}
 		switch key {
+		case "load_owasp_crs":
+			m.LoadOWASPCRS = true
 		case "include":
 			m.Include = append(m.Include, value)
 		case "directives":
